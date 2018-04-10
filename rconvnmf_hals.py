@@ -41,6 +41,7 @@ def cnmf_reconstruct(W, H):
 #shift(test, 1)
 #shift(test, -2)    
     
+eps = np.finfo(np.float32).eps
 
 def rconvnmf_hals(X, k, l, gamma=0, tol=1e-5, max_iter=200, random_state=None, init='normal', verbose=True):
     """
@@ -128,7 +129,7 @@ def rconvnmf_hals(X, k, l, gamma=0, tol=1e-5, max_iter=200, random_state=None, i
         # Update input matrix 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         XS = X - S
-
+        
         if (XS < 0).any():
             raise ValueError("Input matrix with nonnegative elements is required.")       
 
@@ -139,37 +140,33 @@ def rconvnmf_hals(X, k, l, gamma=0, tol=1e-5, max_iter=200, random_state=None, i
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
         Ht_old = Ht.copy()
-        Ht = np.zeros(Ht.shape)
         
+        sumWH  = np.zeros((m,n))
+        for j in range(l):
+            sumWH += W[:,:,j].dot(shift(Ht_old.T, j))
+                              
+        Ht = np.zeros(Ht.shape)
         for i in range(l):   
-            # Update factor matrix H
+
             WtW = W[:,:,i].T.dot(W[:,:,i])
             
-            XtW = XS.T.dot(W[:,:,i])
-  
-          
-            sumHtWtj = np.zeros((n,m))
-            for j in range(l):
-                if j != i:
-                    sumHtWtj += shift(Ht.T, j).T.dot(W[:,:,j].T)
-            
-            temp = XtW - sumHtWtj.dot(W[:,:,i])
+            temp = (W[:,:,i].T.dot(XS - sumWH )).T
             
             Ht_update = np.array(shift(Ht_old.T, i).T, order='C')
 
-            
             violation += _rconnmf_update(Ht_update, WtW, temp)
 
             Ht += shift(Ht_update.T, -i).T
+       
         
         
-        # Average over updated HT
+        # Average over updated Ht
         # Is this necessary ??
         Ht /= l
 
         # Renormalize so rows of H have constant energy
         norms = np.sum(Ht**2, axis=0)**0.5
-        Ht /= norms
+        Ht /= (norms+eps)
     
         for i in range(l):
             W[:, :, i] *= norms
@@ -180,34 +177,27 @@ def rconvnmf_hals(X, k, l, gamma=0, tol=1e-5, max_iter=200, random_state=None, i
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Update W
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        #W_old = W.copy()
+        W_old = W.copy()
+
+        sumWH = np.zeros((m,n))
+        for j in range(l):
+            sumWH += W_old[:,:,j].dot( shift(Ht.T, j))   
+                        
 
         for i in range(l):
             # Update factor matrix W
             Ht_shifted = np.array(shift(Ht.T, i).T, order='C')
-            XHt = XS.dot(Ht_shifted) 
-    
 
-            sumWHj = np.zeros((m,n))
-            for j in range(l):
-                if j != i:
-                    sumWHj += W[:,:,j].dot(shift(Ht.T, j))
-                        
-
-            temp = XHt - sumWHj.dot(Ht_shifted)
+            temp = (XS - sumWH).dot(Ht_shifted)
             
-    
             HHt = Ht_shifted.T.dot(Ht_shifted)
             
-            W_update = np.array(W[:,:,i], order='C')
+            W_update = np.array(W_old[:,:,i], order='C')
+
 
             violation += _rconnmf_update(W_update, HHt, temp)
             
             W[:,:,i] = W_update
-
-
-
-
 
 
 
